@@ -2,7 +2,7 @@ import aiohttp
 import discord
 import json
 import os
-import requests
+import re
 from math import floor
 
 EMOJI_DIGITS = ["0️⃣", "1️⃣","2️⃣","3️⃣","4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
@@ -43,6 +43,19 @@ class Perspectron(discord.Client):
     async def on_message(self, message):
         # we don't want the bot to reply to itself
         if message.author.id == self.user.id:
+            return
+        
+        report = re.search(r"^!report (\d+)", message.content)
+        if report:
+            reporter = message.author
+            reported_msg = await message.channel.fetch_message(report.group(1))
+            reported_user = reported_msg.author
+            # delete evidence of the report (not ideal) and act on it
+            await message.delete()
+            if reported_user.id == self.user.id:
+                await message.channel.send(reporter.mention + ", please refrain from reporting my moderation messages.")
+                return
+            await message.channel.send("Received report for:\n```{}```".format(reported_msg.content))
             return
 
         score = await self.score_message(message.content)
