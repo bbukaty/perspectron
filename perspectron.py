@@ -25,13 +25,15 @@ class Perspectron(discord.Client):
         data_dict = {
             'comment': {'text': message},
             'languages': ['en'],
-            'requestedAttributes': {'TOXICITY': {}},
+            'requestedAttributes': {'TOXICITY': {}, 'SEVERE_TOXICITY': {},
+                                    'IDENTITY_ATTACK': {}, 'THREAT': {},
+                                    'FLIRTATION': {}},
             'doNotStore': True
         }
         async with self.http_session.post(url, json=data_dict) as response:
             if response.status == 200:
                 response_dict = await response.json()
-        return response_dict["attributeScores"]["TOXICITY"]["summaryScore"]["value"]
+        return response_dict
         # return json.dumps(response_dict, indent=2)
 
     def score_to_emoji(self, score):
@@ -45,7 +47,22 @@ class Perspectron(discord.Client):
         if message.author.id == self.user.id:
             return
 
-        score = await self.score_message(message.content)
+        response_dict = await self.score_message(message.content)
+
+        score_summary = ""
+        for attr in sorted(response_dict["attributeScores"].keys()):
+            indent = 18 - len(attr) #18 is a nice indent size for these keywords
+            score_summary += attr + ":"
+            for i in range(indent):
+                score_summary += " "
+            score_summary += str(response_dict["attributeScores"][attr]["summaryScore"]["value"]) + "\n"
+
+
+        # await message.channel.send("```"+json.dumps(response_dict, indent=2)+"```")
+        await message.channel.send("```"+score_summary+"```")
+
+
+        score = response_dict["attributeScores"]["SEVERE_TOXICITY"]["summaryScore"]["value"]
         await message.add_reaction(self.score_to_emoji(score))
         # await message.channel.send(str(score))
 
