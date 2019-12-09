@@ -122,6 +122,13 @@ class Perspectron(discord.Client):
             reported_msg_id = report_match.group(1)
             await self.handle_report(message, reported_msg_id)
             return
+        
+        eval_match = re.search(r"^!eval (.+)", message.content)
+        if eval_match:
+            to_evaluate = eval_match.group(1)
+            msg_scores = await self.request_message_scores(to_evaluate)
+            await message.channel.send(self.construct_summary(msg_scores))
+            return
 
         msg_scores = await self.request_message_scores(message.content)
         if self.check_needs_moderation(msg_scores) or self.has_blacklisted_word(message):
