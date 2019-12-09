@@ -30,9 +30,9 @@ class Perspectron(discord.Client):
         data_dict = {
             'comment': {'text': message},
             'languages': ['en'],
-            'requestedAttributes': {'TOXICITY': {}, 'SEVERE_TOXICITY': {},
+            'requestedAttributes': {'SEVERE_TOXICITY': {}, 'PROFANITY': {},
                                     'IDENTITY_ATTACK': {}, 'THREAT': {},
-                                    'FLIRTATION': {}, 'PROFANITY': {}},
+                                   },
             'doNotStore': True
         }
         async with self.http_session.post(url, json=data_dict) as response:
@@ -50,17 +50,18 @@ class Perspectron(discord.Client):
 
     async def forward_to_mods(self, response_dict, message, reported=False):
         #TODO: cleaner formatting
-        report_string = "\n\n"
+        report_string = "\n#######################################\n"
         if reported:
             report_string += "Received report for:"
         else:
             report_string += "Perpective flagged:"
-        report_string += "\n```{}```from user {} in channel {}.\n"
+        report_string += "\n```{}```from user `{}` in channel `{}`.\n"
+        report_string += self.construct_summary(response_dict)
+        report_string += "#######################################\n"
         await self.get_channel(MOD_CHANNEL).send(
             report_string.format(message.content,
                                  message.author.name,
                                  message.channel.name))
-        await self.get_channel(MOD_CHANNEL).send(self.construct_summary(response_dict))
         return
 
 
@@ -103,12 +104,17 @@ class Perspectron(discord.Client):
         score_summary += "```"
         return score_summary
 
-
+    def has_blacklisted_word(self, message):
+        blacklist = ['kys']
+        for word in blacklist:
+            if word in message.content:
+                return True
+        return False
 
     def check_needs_moderation(self, response_dict):
         #TODO: read in from config file?
         #TODO: profanity tie-breaks
-        thresholds = { 'SEVERE_TOXICITY': 0.5, 'IDENTITY_ATTACK': 0.5, 'THREAT': 0.5 }
+        thresholds = { 'SEVERE_TOXICITY': 0.75, 'IDENTITY_ATTACK': 0.5, 'THREAT': 0.5 }
         attributes = sorted(response_dict["attributeScores"].keys())
         needs_moderation = False
         for attr in attributes:
@@ -129,7 +135,7 @@ class Perspectron(discord.Client):
             return
 
         response_dict = await self.request_message_score(message.content)
-        if self.check_needs_moderation(response_dict):
+        if self.check_needs_moderation(response_dict) or self.has_blacklisted_word(message):
             await self.forward_to_mods(response_dict, message)
 
         # add reaction based on message score
