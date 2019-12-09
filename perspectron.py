@@ -25,7 +25,7 @@ class Perspectron(discord.Client):
         print(self.user.id)
         print('------')
 
-    async def request_message_score(self, message):
+    async def request_message_scores(self, message):
         url = PERSPECTIVE_URL + '?key=' + self.ps_key
         data_dict = {
             'comment': {'text': message},
@@ -38,7 +38,12 @@ class Perspectron(discord.Client):
         async with self.http_session.post(url, json=data_dict) as response:
             if response.status == 200:
                 response_dict = await response.json()
-        return response_dict
+        
+        scores = {}
+        for attr in response_dict["attributeScores"]:
+            scores[attr] = response_dict["attributeScores"][attr]["summaryScore"]["value"]
+
+        return scores
         # return json.dumps(response_dict, indent=2)
 
     def score_to_emoji(self, score):
@@ -48,25 +53,18 @@ class Perspectron(discord.Client):
             return EMOJI_DIGITS[floor(score * 10)]
 
 
-    async def forward_to_mods(self, response_dict, message, reported=False):
-        #TODO: cleaner formatting
-        report_string = "\n#######################################\n"
-        if reported:
-            report_string += "Received report for:"
-        else:
-            report_string += "Perpective flagged:"
-        report_string += "\n```{}```from user `{}` in channel `{}`.\n"
-        report_string += self.construct_summary(response_dict)
-        report_string += "#######################################\n"
+    async def forward_to_mods(self, msg_scores, message, reported=False):
+        report_string = "Received report for:\n" if reported else "Perpective flagged:\n"
+        report_string += "> {}\nfrom user {} in channel {}.\n"
+        report_string += self.construct_summary(msg_scores)
         await self.get_channel(MOD_CHANNEL).send(
             report_string.format(message.content,
-                                 message.author.name,
-                                 message.channel.name))
+                                 message.author.mention,
+                                 message.channel.mention))
         return
 
 
     async def handle_report(self, report, reported_msg_id):
-        print("handling report?")
         reporter = report.author
         reported_msg = await report.channel.fetch_message(reported_msg_id)
         reported_user = reported_msg.author
@@ -77,30 +75,22 @@ class Perspectron(discord.Client):
             return
 
         # currently mod channel is hard-coded
-        # forward message and score to mod channel
-        response_dict = await self.request_message_score(reported_msg.content)
-        await self.forward_to_mods(response_dict, reported_msg, True)
+        # forward message to mod channel, re-request message scores and send as well
+        msg_scores = await self.request_message_scores(reported_msg.content)
+        await self.forward_to_mods(msg_scores, reported_msg, True)
 
         #await report.channel.send("Received report for:\n```{}```".format(reported_msg.content))
 
-
-    def get_attribute(self, response_dict, attr):
-        return response_dict["attributeScores"][attr]["summaryScore"]["value"]
-
-
-    def construct_summary(self, response_dict):
+    def construct_summary(self, msg_scores):
         score_summary = "```\n"
-        attributes = sorted(response_dict["attributeScores"].keys())
-        for attr in attributes:
-            # value = response_dict["attributeScores"][attr]["summaryScore"]["value"]
-            value = self.get_attribute(response_dict, attr)
-            if value > 0.8:
+        for attr, score in sorted(msg_scores.items()):
+            if score > 0.8:
                 indicator = EMOJI_ALERT
-            elif value > 0.5:
+            elif score > 0.5:
                 indicator = EMOJI_WARNING
             else:
                 indicator = EMOJI_OK
-            score_summary += "{:18}{} {:4.1f}\n".format(attr + ":", indicator, value*100)
+            score_summary += "{:18}{} {:4.1f}\n".format(attr + ":", indicator, score*100)
         score_summary += "```"
         return score_summary
 
@@ -111,15 +101,13 @@ class Perspectron(discord.Client):
                 return True
         return False
 
-    def check_needs_moderation(self, response_dict):
+    def check_needs_moderation(self, msg_scores):
         #TODO: read in from config file?
         #TODO: profanity tie-breaks
         thresholds = { 'SEVERE_TOXICITY': 0.75, 'IDENTITY_ATTACK': 0.5, 'THREAT': 0.5 }
-        attributes = sorted(response_dict["attributeScores"].keys())
         needs_moderation = False
-        for attr in attributes:
-            if attr in thresholds:
-                if self.get_attribute(response_dict, attr) > thresholds[attr]:
+        for attr, score in msg_scores.items():
+            if attr in thresholds and score > thresholds[attr]:
                     needs_moderation = True
         return needs_moderation
 
@@ -131,12 +119,13 @@ class Perspectron(discord.Client):
 
         report_match = re.search(r"^!report (\d+)", message.content)
         if report_match:
-            await self.handle_report(message, report_match.group(1))
+            reported_msg_id = report_match.group(1)
+            await self.handle_report(message, reported_msg_id)
             return
 
-        response_dict = await self.request_message_score(message.content)
-        if self.check_needs_moderation(response_dict) or self.has_blacklisted_word(message):
-            await self.forward_to_mods(response_dict, message)
+        msg_scores = await self.request_message_scores(message.content)
+        if self.check_needs_moderation(msg_scores) or self.has_blacklisted_word(message):
+            await self.forward_to_mods(msg_scores, message)
 
         # add reaction based on message score
         # score = response_dict["attributeScores"]["SEVERE_TOXICITY"]["summaryScore"]["value"]
