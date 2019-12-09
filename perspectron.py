@@ -54,12 +54,9 @@ class Perspectron(discord.Client):
 
 
     async def forward_to_mods(self, msg_scores, message, reported=False):
-        #TODO: cleaner formatting
-        report_string = "\n#######################################\n"
-        report_string += "Received report for:\n" if reported else "Perpective flagged:\n"
+        report_string = "Received report for:\n" if reported else "Perpective flagged:\n"
         report_string += "> {}\nfrom user {} in channel {}.\n"
         report_string += self.construct_summary(msg_scores)
-        report_string += "#######################################\n"
         await self.get_channel(MOD_CHANNEL).send(
             report_string.format(message.content,
                                  message.author.mention,
@@ -86,7 +83,7 @@ class Perspectron(discord.Client):
 
     def construct_summary(self, msg_scores):
         score_summary = "```\n"
-        for attr, score in msg_scores.items():
+        for attr, score in sorted(msg_scores.items()):
             if score > 0.8:
                 indicator = EMOJI_ALERT
             elif score > 0.5:
