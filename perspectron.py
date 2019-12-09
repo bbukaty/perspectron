@@ -52,16 +52,14 @@ class Perspectron(discord.Client):
         #TODO: cleaner formatting
         report_string = "\n#######################################\n"
         if reported:
-            report_string += "Received report for"
+            report_string += "Received report for:"
         else:
-            report_string += "Perpective flagged"
-        report_string += " (mid `{}`, cid `{}`):\n```{}```from user `{}` in channel `{}`\n"
+            report_string += "Perpective flagged:"
+        report_string += "\n```{}```from user `{}` in channel `{}`.\n"
         report_string += self.construct_summary(response_dict)
         report_string += "#######################################\n"
         await self.get_channel(MOD_CHANNEL).send(
-            report_string.format(message.id,
-                                 message.channel.id,
-                                 message.content,
+            report_string.format(message.content,
                                  message.author.name,
                                  message.channel.name))
         return
@@ -143,33 +141,6 @@ class Perspectron(discord.Client):
         # add reaction based on message score
         # score = response_dict["attributeScores"]["SEVERE_TOXICITY"]["summaryScore"]["value"]
         # await message.add_reaction(self.score_to_emoji(score))
-
-    # def get_id_from_report(self, message):
-
-    #     return None
-    #     # return int(message.content[id_start:id_end])
-
-    async def on_reaction_add(self, reaction, user):
-        print("reaction added")
-        report = reaction.message
-        if report.author.id != self.user.id or report.channel.id != MOD_CHANNEL:
-            return
-
-        # find message by message id
-        mid_match = re.search(r"^(mid `\d+`", report.content)
-        cid_match = re.search(r"^, cid `\d+`)", report.content)
-
-        if mid_match:
-            print("message id: " + str(mid_match.group(1)))
-        if cid_match:
-            print("channel id: " + str(cid_match.group(1)))
-        # print("message id: " + str(self.get_id_from_report(report)))
-
-
-        # take some action based on reaction
-        #self.get_message()
-
-
 
     # overwrite close method to clean up our objects as well
     async def close(self):
