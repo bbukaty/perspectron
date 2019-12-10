@@ -36,9 +36,10 @@ class Perspectron(discord.Client):
             'doNotStore': True
         }
         async with self.http_session.post(url, json=data_dict) as response:
-            if response.status == 200:
-                response_dict = await response.json()
-        
+            print(response.text)
+            assert(response.status == 200)
+            response_dict = await response.json()
+
         scores = {}
         for attr in response_dict["attributeScores"]:
             scores[attr] = response_dict["attributeScores"][attr]["summaryScore"]["value"]
@@ -104,10 +105,19 @@ class Perspectron(discord.Client):
     def check_needs_moderation(self, msg_scores):
         #TODO: read in from config file?
         #TODO: profanity tie-breaks
-        thresholds = { 'SEVERE_TOXICITY': 0.75, 'IDENTITY_ATTACK': 0.5, 'THREAT': 0.5 }
+        thresholds = { 'SEVERE_TOXICITY': 0.69, 'IDENTITY_ATTACK': 0.5, 'THREAT': 0.5 }
         needs_moderation = False
+        epsilon = 0.05
         for attr, score in msg_scores.items():
-            if attr in thresholds and score > thresholds[attr]:
+            if not attr in thresholds:
+                continue
+            if score >= thresholds[attr]:
+                # if the message is profane and near the threshold, might not be
+                # worth trying to moderate it - this handles fuck
+                if score - thresholds[attr] < epsilon:
+                    if msg_scores['PROFANITY'] < 0.9:
+                        needs_moderation = True
+                else:
                     needs_moderation = True
         return needs_moderation
 
@@ -122,12 +132,18 @@ class Perspectron(discord.Client):
             reported_msg_id = report_match.group(1)
             await self.handle_report(message, reported_msg_id)
             return
-        
+
         eval_match = re.search(r"^!eval (.+)", message.content)
         if eval_match:
             to_evaluate = eval_match.group(1)
             msg_scores = await self.request_message_scores(to_evaluate)
-            await message.channel.send(self.construct_summary(msg_scores))
+            await message.channel.send(str(self.check_needs_moderation(msg_scores)) + self.construct_summary(msg_scores))
+            return
+
+        test_match = re.search(r"^!test", message.content)
+        if test_match:
+            await self.test_thresholds(message.channel)
+            # await message.channel.send(test_results)
             return
 
         msg_scores = await self.request_message_scores(message.content)
@@ -142,6 +158,29 @@ class Perspectron(discord.Client):
     async def close(self):
         await super().close()
         await self.http_session.close()
+
+
+    ###### TESTING ######
+    async def test_thresholds(self, channel):
+        failed = 0
+        failures = []
+        with open('test_messages.json', 'r') as messages_file:
+            messages = json.load(messages_file)
+            for m in messages.keys():
+                label = messages[m]
+                msg_scores = await self.request_message_scores(m)
+                bot_score = self.check_needs_moderation(msg_scores)
+                if bot_score != label:
+                    failed += 1
+                    failures.append("\n" + m + "\n - LABEL: " \
+                             + str(label) + ", BOT: " + str(bot_score) + "\n")
+
+
+        failures.insert(0, "Tests failed: " + str(failed) + "/" + str(len(messages)))
+        for f in failures:
+            await channel.send(f)
+
+
 
 client = Perspectron(os.environ['PERSPECTIVE_KEY'])
 client.run(os.environ['DISCORD_KEY'])
