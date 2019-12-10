@@ -137,7 +137,8 @@ class Perspectron(discord.Client):
                 matches.append(phrase)
         return matches
 
-    def check_needs_moderation(self, msg_scores):
+
+    def check_should_moderate(self, msg_scores):
         #TODO: read in from config file?
         #TODO: profanity tie-breaks
         thresholds = { 'SEVERE_TOXICITY': 0.69, 'IDENTITY_ATTACK': 0.5, 'THREAT': 0.5 }
@@ -157,6 +158,8 @@ class Perspectron(discord.Client):
         return needs_moderation
 
 
+
+
     async def on_message(self, message):
         # we don't want the bot to reply to itself or monitor the feedback channel
         if message.author.id == self.user.id or message.channel.id in UNMONITORED_CHANNELS:
@@ -173,7 +176,7 @@ class Perspectron(discord.Client):
         if eval_match:
             to_evaluate = eval_match.group(1)
             msg_scores = await self.request_message_scores(to_evaluate)
-            await message.channel.send(str(self.check_needs_moderation(msg_scores)) + self.construct_summary(msg_scores))
+            await message.channel.send(str(self.check_should_moderate(msg_scores)) + self.construct_summary(msg_scores))
             return
 
         test_match = re.search(r"^!test", message.content)
@@ -195,7 +198,7 @@ class Perspectron(discord.Client):
         msg_scores = await self.request_message_scores(message.content)
         bl_phrases = self.get_blacklisted_phrases(message.content)
 
-        if bl_phrases or self.check_needs_moderation(msg_scores):
+        if bl_phrases or self.check_should_moderate(msg_scores):
             await self.forward_to_mods(msg_scores, message, bl_phrases=bl_phrases)
             return
 
@@ -254,7 +257,7 @@ class Perspectron(discord.Client):
                     continue
                 label = messages[m]
                 msg_scores = await self.request_message_scores(m)
-                bot_score = self.check_needs_moderation(msg_scores)
+                bot_score = self.check_should_moderate(msg_scores)
                 if bot_score != label:
                     failed += 1
                     failures.append("\n" + m + "\n - LABEL: " \
