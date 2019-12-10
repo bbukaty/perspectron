@@ -237,10 +237,6 @@ class Perspectron(discord.Client):
             await self.forward_to_mods(msg_scores, message, bl_phrases=bl_phrases)
             return
 
-        # add reaction based on message score
-        # score = response_dict["attributeScores"]["SEVERE_TOXICITY"]["summaryScore"]["value"]
-        # await message.add_reaction(self.score_to_emoji(score))
-
     async def on_reaction_add(self, reaction, user):
         report = reaction.message
 
