@@ -142,13 +142,13 @@ class Perspectron(discord.Client):
         if msg_scores['IDENTITY_ATTACK'] > 0.9:
             reason = 'IDENTITY_ATTACK'
 
-        mod_notification = "Deleted message ```{}``` from user {} in channel {}.\
-        \nReason: {}"
+        mod_notification = "Deleted message from user {} in channel {} due to {}.\n```{}```"
 
-        await self.get_channel(MOD_CHANNEL).send(mod_notification.format(message.content,
+        await self.get_channel(MOD_CHANNEL).send(mod_notification.format(
                                      message.author.mention,
                                      message.channel.mention,
-                                     reason))
+                                     reason,
+                                     message.content))
         await message.delete()
 
 
@@ -175,7 +175,7 @@ class Perspectron(discord.Client):
     def check_should_delete(self, msg_scores):
         score_sum = msg_scores['THREAT'] + msg_scores['SEVERE_TOXICITY'] + msg_scores['IDENTITY_ATTACK']
 
-        if msg_scores['IDENTITY_ATTACK'] > 0.9:
+        if msg_scores['IDENTITY_ATTACK'] > 0.8:
             return True
 
         if msg_scores['THREAT'] > 0.6:
