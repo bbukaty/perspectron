@@ -13,8 +13,8 @@ EMOJI_OK, EMOJI_WARNING, EMOJI_ALERT = "⬜", "🟧", "🟥"
 
 EMOJI_CLEAR, EMOJI_REMOVE, EMOJI_KICK, EMOJI_BAN = "🆗", "🧼", "🦵", "🔨"
 
-UNMONITORED_CHANNELS = [653404020005797903, 649411727745744907]
-MOD_CHANNEL = 649411727745744907
+UNMONITORED_CHANNELS = [653404020005797903, 653832465999462422]
+MOD_CHANNEL = 653832465999462422
 
 class Perspectron(discord.Client):
     def __init__(self, perspective_key):
@@ -136,11 +136,14 @@ class Perspectron(discord.Client):
         return matches
 
 
-    async def auto_delete(self, message, msg_scores):
+    async def auto_delete(self, message, msg_scores, bl):
         #todo: notify mods that message was deleted.
+
         reason = 'THREAT'
         if msg_scores['IDENTITY_ATTACK'] > 0.9:
             reason = 'IDENTITY_ATTACK'
+        if bl:
+            reason = 'use of blacklisted word'
 
         mod_notification = "Deleted message from user {} in channel {} due to {}.\n```{}```"
 
@@ -229,11 +232,14 @@ class Perspectron(discord.Client):
         msg_scores = await self.request_message_scores(message.content)
         bl_phrases = self.get_blacklisted_phrases(message.content)
 
-        if self.check_should_delete(msg_scores):
-            await self.auto_delete(message, msg_scores)
+        if bl_phrases or self.check_should_delete(msg_scores):
+            if bl_phrases:
+                await self.auto_delete(message, msg_scores, True)
+            else:
+                await self.auto_delete(message, msg_scores, False)
             return
 
-        if bl_phrases or self.check_should_moderate(msg_scores):
+        if self.check_should_moderate(msg_scores):
             await self.forward_to_mods(msg_scores, message, bl_phrases=bl_phrases)
             return
 
@@ -262,13 +268,14 @@ class Perspectron(discord.Client):
             await reported_msg.delete()
             await report.delete()
         elif reaction.emoji == EMOJI_KICK:
+            await reported_msg.author.kick()
             await reported_msg.delete()
             await report.delete()
-            #todo kick
         elif reaction.emoji == EMOJI_BAN:
-            await reported_msg.delete()
+            ban_reason = "Banned for posting \"{}\".".format(reported_msg.content)
+            # await reported_msg.delete() #auto deleted
             await report.delete()
-            #todo ban
+            await reported_msg.author.ban(reason=ban_reason)
 
 
     # overwrite close method to clean up our objects as well
