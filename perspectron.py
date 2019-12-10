@@ -11,6 +11,8 @@ PERSPECTIVE_URL = 'https://commentanalyzer.googleapis.com/v1alpha1/comments:anal
 EMOJI_DIGITS = ["0️⃣", "1️⃣","2️⃣","3️⃣","4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
 EMOJI_OK, EMOJI_WARNING, EMOJI_ALERT = "⬜", "🟧", "🟥"
 
+EMOJI_REMOVE, EMOJI_KICK, EMOJI_BAN = "🧼", "🦵", "🔨"
+
 UNMONITORED_CHANNELS = [653404020005797903, 649411727745744907]
 MOD_CHANNEL = 649411727745744907
 
@@ -38,7 +40,6 @@ class Perspectron(discord.Client):
             'doNotStore': True
         }
         async with self.http_session.post(url, json=data_dict) as response:
-            print(response.text)
             assert(response.status == 200)
             response_dict = await response.json()
 
@@ -58,14 +59,16 @@ class Perspectron(discord.Client):
 
     async def forward_to_mods(self, msg_scores, message, reported=False, bl_phrases=None):
         report_string = "Received report for:\n" if reported else "Flagged:\n"
-        report_string += "> {}\nfrom user {} in channel {}.\n"
+        report_string += "> {}\nid: `{}`\nfrom user {} in channel {}.\n"
         if bl_phrases:
             report_string += "Contains blacklisted phrases: `{}`\n".format("` `".join(bl_phrases))
         report_string += self.construct_summary(msg_scores)
-        await self.get_channel(MOD_CHANNEL).send(
+        sent = await self.get_channel(MOD_CHANNEL).send(
             report_string.format(message.content,
+                                 message.id,
                                  message.author.mention,
                                  message.channel.mention))
+        #TODO: add reactions
         return
 
 
@@ -195,6 +198,28 @@ class Perspectron(discord.Client):
         # score = response_dict["attributeScores"]["SEVERE_TOXICITY"]["summaryScore"]["value"]
         # await message.add_reaction(self.score_to_emoji(score))
 
+    async def on_reaction_add(self, reaction, user):
+        report = reaction.message
+        if not (report.author.id == self.user.id and report.channel.id == MOD_CHANNEL):
+            return
+
+        #find relevant message in relevant channel
+        message_id_match = re.search(r".*id: `(\d+).*", report.content)
+        #assume match - our formatting
+        message_id = message_id_match.group(1)
+
+        user = report.mentions[0]
+        channel = report.channel_mentions[0]
+        reported_msg = await channel.fetch_message(message_id)
+
+        #take action based on message
+        await reported_msg.delete()
+        await report.delete()
+
+        # reported_msg = await report.channel.fetch_message(reported_msg_id)
+
+
+
     # overwrite close method to clean up our objects as well
     async def close(self):
         await super().close()
@@ -208,6 +233,8 @@ class Perspectron(discord.Client):
         with open('test_messages.json', 'r') as messages_file:
             messages = json.load(messages_file)
             for m in messages.keys():
+                if len(m) > 3000:
+                    continue
                 label = messages[m]
                 msg_scores = await self.request_message_scores(m)
                 bot_score = self.check_needs_moderation(msg_scores)
