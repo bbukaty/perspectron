@@ -74,8 +74,6 @@ class Perspectron(discord.Client):
         await sent.add_reaction(EMOJI_KICK)
         await sent.add_reaction(EMOJI_BAN)
 
-        return
-
 
     async def handle_report(self, report, reported_msg_id):
         reporter = report.author
@@ -138,6 +136,22 @@ class Perspectron(discord.Client):
         return matches
 
 
+    async def auto_delete(self, message, msg_scores):
+        #todo: notify mods that message was deleted.
+        reason = 'THREAT'
+        if msg_scores['IDENTITY_ATTACK'] > 0.9:
+            reason = 'IDENTITY_ATTACK'
+
+        mod_notification = "Deleted message ```{}``` from user {} in channel {}.\
+        \nReason: {}"
+
+        await self.get_channel(MOD_CHANNEL).send(mod_notification.format(message.content,
+                                     message.author.mention,
+                                     message.channel.mention,
+                                     reason))
+        await message.delete()
+
+
     def check_should_moderate(self, msg_scores):
         #TODO: read in from config file?
         #TODO: profanity tie-breaks
@@ -158,6 +172,17 @@ class Perspectron(discord.Client):
         return needs_moderation
 
 
+    def check_should_delete(self, msg_scores):
+        score_sum = msg_scores['THREAT'] + msg_scores['SEVERE_TOXICITY'] + msg_scores['IDENTITY_ATTACK']
+
+        if msg_scores['IDENTITY_ATTACK'] > 0.9:
+            return True
+
+        if msg_scores['THREAT'] > 0.6:
+            if msg_scores['SEVERE_TOXICITY'] + msg_scores['IDENTITY_ATTACK'] > 1.0:
+                return True
+
+        return False
 
 
     async def on_message(self, message):
@@ -176,13 +201,19 @@ class Perspectron(discord.Client):
         if eval_match:
             to_evaluate = eval_match.group(1)
             msg_scores = await self.request_message_scores(to_evaluate)
-            await message.channel.send(str(self.check_should_moderate(msg_scores)) + self.construct_summary(msg_scores))
+            result = "Moderate: " + str(self.check_should_moderate(msg_scores)) + "\n"
+            result += "Delete: " + str(self.check_should_delete(msg_scores)) + "\n"
+            await message.channel.send(result + self.construct_summary(msg_scores))
             return
 
-        test_match = re.search(r"^!test", message.content)
+        test_match = re.search(r"^!test_mod", message.content)
         if test_match:
-            await self.test_thresholds(message.channel)
-            # await message.channel.send(test_results)
+            await self.test_moderation_thresholds(message.channel)
+            return
+
+        test_match = re.search(r"^!test_del", message.content)
+        if test_match:
+            await self.test_deletion_thresholds(message.channel)
             return
 
         bl_command_match = re.search(r"^!bl (\w+)(?: (.+))?", message.content)
@@ -197,6 +228,10 @@ class Perspectron(discord.Client):
         # Evaluate message
         msg_scores = await self.request_message_scores(message.content)
         bl_phrases = self.get_blacklisted_phrases(message.content)
+
+        if self.check_should_delete(msg_scores):
+            await self.auto_delete(message, msg_scores)
+            return
 
         if bl_phrases or self.check_should_moderate(msg_scores):
             await self.forward_to_mods(msg_scores, message, bl_phrases=bl_phrases)
@@ -247,10 +282,10 @@ class Perspectron(discord.Client):
 
 
     ###### TESTING ######
-    async def test_thresholds(self, channel):
+    async def test_moderation_thresholds(self, channel):
         failed = 0
-        failures = []
-        with open('test_messages.json', 'r') as messages_file:
+        failures = ['-- Testing Moderation --']
+        with open('test_moderation.json', 'r') as messages_file:
             messages = json.load(messages_file)
             for m in messages.keys():
                 if len(m) > 3000:
@@ -263,9 +298,29 @@ class Perspectron(discord.Client):
                     failures.append("\n" + m + "\n - LABEL: " \
                              + str(label) + ", BOT: " + str(bot_score) + "\n")
                 time.sleep(1)
+        failures.insert(1, "Tests failed: " + str(failed) + "/" + str(len(messages)))
+        for f in failures:
+            await channel.send(f)
 
-
-        failures.insert(0, "Tests failed: " + str(failed) + "/" + str(len(messages)))
+    async def test_deletion_thresholds(self, channel):
+        failed = 0
+        failures = ['-- Testing Deletion --']
+        with open('test_deletion.json', 'r') as messages_file:
+            messages = json.load(messages_file)
+            for m in messages.keys():
+                if len(m) > 3000:
+                    continue
+                label = messages[m]
+                msg_scores = await self.request_message_scores(m)
+                summary = self.construct_summary(msg_scores)
+                bot_score = self.check_should_delete(msg_scores)
+                if bot_score != label:
+                    failed += 1
+                    failures.append("\n" + m + "\n - LABEL: " \
+                             + str(label) + ", BOT: " + str(bot_score) + "\n")
+                    failures.append(summary)
+                time.sleep(1)
+        failures.insert(1, "Tests failed: " + str(failed) + "/" + str(len(messages)))
         for f in failures:
             await channel.send(f)
 
