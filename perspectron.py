@@ -11,7 +11,7 @@ PERSPECTIVE_URL = 'https://commentanalyzer.googleapis.com/v1alpha1/comments:anal
 EMOJI_DIGITS = ["0️⃣", "1️⃣","2️⃣","3️⃣","4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
 EMOJI_OK, EMOJI_WARNING, EMOJI_ALERT = "⬜", "🟧", "🟥"
 
-EMOJI_REMOVE, EMOJI_KICK, EMOJI_BAN = "🧼", "🦵", "🔨"
+EMOJI_CLEAR, EMOJI_REMOVE, EMOJI_KICK, EMOJI_BAN = "🆗", "🧼", "🦵", "🔨"
 
 UNMONITORED_CHANNELS = [653404020005797903, 649411727745744907]
 MOD_CHANNEL = 649411727745744907
@@ -68,7 +68,12 @@ class Perspectron(discord.Client):
                                  message.id,
                                  message.author.mention,
                                  message.channel.mention))
-        #TODO: add reactions
+
+        await sent.add_reaction(EMOJI_CLEAR)
+        await sent.add_reaction(EMOJI_REMOVE)
+        await sent.add_reaction(EMOJI_KICK)
+        await sent.add_reaction(EMOJI_BAN)
+
         return
 
 
@@ -200,6 +205,10 @@ class Perspectron(discord.Client):
 
     async def on_reaction_add(self, reaction, user):
         report = reaction.message
+
+        if user.id == self.user.id:
+            return
+
         if not (report.author.id == self.user.id and report.channel.id == MOD_CHANNEL):
             return
 
@@ -213,11 +222,19 @@ class Perspectron(discord.Client):
         reported_msg = await channel.fetch_message(message_id)
 
         #take action based on message
-        await reported_msg.delete()
-        await report.delete()
-
-        # reported_msg = await report.channel.fetch_message(reported_msg_id)
-
+        if reaction.emoji == EMOJI_CLEAR:
+            await report.delete()
+        elif reaction.emoji == EMOJI_REMOVE:
+            await reported_msg.delete()
+            await report.delete()
+        elif reaction.emoji == EMOJI_KICK:
+            await reported_msg.delete()
+            await report.delete()
+            #todo kick
+        elif reaction.emoji == EMOJI_BAN:
+            await reported_msg.delete()
+            await report.delete()
+            #todo ban
 
 
     # overwrite close method to clean up our objects as well
