@@ -3,6 +3,7 @@ import discord
 import json
 import os
 import re
+import time
 from math import floor
 
 PERSPECTIVE_URL = 'https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze'
@@ -97,7 +98,7 @@ class Perspectron(discord.Client):
             score_summary += "{:18}{} {:4.1f}\n".format(attr + ":", indicator, score*100)
         score_summary += "```"
         return score_summary
-    
+
     async def handle_bl_command(self, action, phrase, command_msg):
         if action == "add":
             if phrase in self.blacklist:
@@ -172,7 +173,7 @@ class Perspectron(discord.Client):
             await self.test_thresholds(message.channel)
             # await message.channel.send(test_results)
             return
-        
+
         bl_command_match = re.search(r"^!bl (\w+)(?: (.+))?", message.content)
         if bl_command_match:
             action, phrase = bl_command_match.group(1), bl_command_match.group(2)
@@ -214,6 +215,7 @@ class Perspectron(discord.Client):
                     failed += 1
                     failures.append("\n" + m + "\n - LABEL: " \
                              + str(label) + ", BOT: " + str(bot_score) + "\n")
+                time.sleep(1)
 
 
         failures.insert(0, "Tests failed: " + str(failed) + "/" + str(len(messages)))
