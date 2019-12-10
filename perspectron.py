@@ -18,6 +18,7 @@ class Perspectron(discord.Client):
         super().__init__()
         self.http_session = aiohttp.ClientSession()
         self.ps_key = perspective_key
+        self.blacklist = set()
 
     async def on_ready(self):
         print('Logged in as')
@@ -54,9 +55,11 @@ class Perspectron(discord.Client):
             return EMOJI_DIGITS[floor(score * 10)]
 
 
-    async def forward_to_mods(self, msg_scores, message, reported=False):
-        report_string = "Received report for:\n" if reported else "Perpective flagged:\n"
+    async def forward_to_mods(self, msg_scores, message, reported=False, bl_phrases=None):
+        report_string = "Received report for:\n" if reported else "Flagged:\n"
         report_string += "> {}\nfrom user {} in channel {}.\n"
+        if bl_phrases:
+            report_string += "Contains blacklisted phrases: `{}`\n".format("` `".join(bl_phrases))
         report_string += self.construct_summary(msg_scores)
         await self.get_channel(MOD_CHANNEL).send(
             report_string.format(message.content,
@@ -94,13 +97,36 @@ class Perspectron(discord.Client):
             score_summary += "{:18}{} {:4.1f}\n".format(attr + ":", indicator, score*100)
         score_summary += "```"
         return score_summary
+    
+    async def handle_bl_command(self, action, phrase, command_msg):
+        if action == "add":
+            if phrase in self.blacklist:
+                response = "`{}` is already in the blacklist.".format(phrase)
+            else:
+                self.blacklist.add(phrase)
+                response = "Added `{}` to the blacklist.".format(phrase)
+        elif action == "del":
+            if phrase not in self.blacklist:
+                response = "`{}` was not found in the blacklist.".format(phrase)
+            else:
+                self.blacklist.remove(phrase)
+                response = "Successfully removed `{}` from the blacklist.".format(phrase)
+        elif action == "show":
+            if not self.blacklist:
+                response = "The blacklist is currently empty."
+            else:
+                response = "Here are all the phrases in the blacklist:\n"
+                response += "```\n{}\n```".format("\n".join(self.blacklist))
+        else:
+            response = "Unrecognized blacklist command. Options are `add`, `del`, and `show`."
+        await command_msg.channel.send(response)
 
-    def has_blacklisted_word(self, message):
-        blacklist = ['kys']
-        for word in blacklist:
-            if word in message.content:
-                return True
-        return False
+    def get_blacklisted_phrases(self, text):
+        matches = []
+        for phrase in self.blacklist:
+            if re.search(r"\b{}\b".format(phrase), text, re.IGNORECASE):
+                matches.append(phrase)
+        return matches
 
     def check_needs_moderation(self, msg_scores):
         #TODO: read in from config file?
@@ -127,6 +153,7 @@ class Perspectron(discord.Client):
         if message.author.id == self.user.id or message.channel.id in UNMONITORED_CHANNELS:
             return
 
+        # Commands
         report_match = re.search(r"^!report (\d+)", message.content)
         if report_match:
             reported_msg_id = report_match.group(1)
@@ -145,10 +172,23 @@ class Perspectron(discord.Client):
             await self.test_thresholds(message.channel)
             # await message.channel.send(test_results)
             return
+        
+        bl_command_match = re.search(r"^!bl (\w+)(?: (.+))?", message.content)
+        if bl_command_match:
+            action, phrase = bl_command_match.group(1), bl_command_match.group(2)
+            if action in {"add", "del"} and not phrase:
+                await message.channel.send("Please specify a phrase.")
+                return
+            await self.handle_bl_command(action, phrase, message)
+            return
 
+        # Evaluate message
         msg_scores = await self.request_message_scores(message.content)
-        if self.check_needs_moderation(msg_scores) or self.has_blacklisted_word(message):
-            await self.forward_to_mods(msg_scores, message)
+        bl_phrases = self.get_blacklisted_phrases(message.content)
+
+        if bl_phrases or self.check_needs_moderation(msg_scores):
+            await self.forward_to_mods(msg_scores, message, bl_phrases=bl_phrases)
+            return
 
         # add reaction based on message score
         # score = response_dict["attributeScores"]["SEVERE_TOXICITY"]["summaryScore"]["value"]
